@@ -25,9 +25,7 @@ Library
                        aeson,
                        bytestring,
                        text,
-                       cryptohash,
-                       split,
-                       crypto-cipher-types                       
+                       split                  
 
   hs-source-dirs:      src
   default-language:    Haskell2010
@@ -40,9 +38,7 @@ executable while
                        cse230-project,
                        bytestring,
                        text,
-                       cryptohash,
-                       split,
-                       crypto-cipher-types                       
+                       split                     
 
   default-language:    Haskell2010
   main-is:             src/While.hs
