@@ -13,7 +13,8 @@ import Data.String
 import Crypto.Cipher.Types
 import Prelude as P
 import Foreign.C (CSChar(CSChar))
-import Data.Char (digitToInt)
+import Data.Char (digitToInt, isUpper)
+import Data.Maybe (fromJust)
 import Data.List.Split as S
 import Text.Read (Lexeme(Char))
 import qualified Data.Map as M
@@ -24,6 +25,10 @@ import Control.Monad.Identity (Identity (Identity, Identity))
 import Data.IntMap (findWithDefault)
 import qualified Data.Text.Encoding as T
 import Data.ByteString (ByteString)
+import Crypto.Cipher.AES128
+import Test.QuickCheck
+
+-- import Crypto.Cipher
 
 -- stack install random/aeson to install the package
 -- add the dependency random/aeson in the .cabal file, build-depends under Library
@@ -259,6 +264,46 @@ try2 = replacePassWord "Google" "Jesse" "1234324e" try1
 tryt :: [Char]
 tryt = searchOverList "Google" "Jesse" try1
 
+testString = BS.pack "It is a 128-bi\01"
 
-keyString = BS.pack "It is a 128-bit key"
+keyString :: Maybe AESKey128
+keyString = buildKey (BS.pack "It is a 128-bi\01") 
+
+
+
+key :: AESKey128
+key = fromJust keyString 
+-- >>> testencrypt
+-- "\248\&0\227\167\\KI3\r\186\v\161\b\218\192i"
+--
+
+testencrypt = encryptBlock key testString
+-- >>> testdecrypt
+-- "It is a 128-bit "
+--
+testdecrypt = decryptBlock key testencrypt
              
+-- unit test generate
+prop_generate_cap :: Int -> IO Bool
+prop_generate_cap 0 = return True
+prop_generate_cap n = do pass <- passWordGeneration
+                         case (isUpper (pass !! 0)) of
+                            True -> prop_generate_cap (n-1)
+                            _    -> return False
+
+prop_generate_len 0 = return True
+prop_generate_len n = do pass <- passWordGeneration
+                         case ((length pass) >= 8) && ((length pass) <= 16) of
+                            True -> prop_generate_len (n-1)
+                            _    -> return False
+
+prop_generate_diff 0 = return True
+prop_generate_diff n = do pass1 <- passWordGeneration
+                          pass2 <- passWordGeneration
+                          case (pass1 /= pass2) of
+                            True -> prop_generate_diff (n-1)
+                            _    -> return False
+
+-- qc_cap = do bool <- prop_generate_cap
+--             quickCheck bool
+-- >>> passWordGeneration

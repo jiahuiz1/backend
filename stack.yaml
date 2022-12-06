@@ -7,3 +7,5 @@ extra-deps:
 - htdp-image-1.1.0.0
 - AC-Angle-1.0
 - gloss-export-0.1.0.2
+- cipher-blowfish-0.0.3@sha256:aa8fddef17ba57c2ef31f335ab474f16dfa106f903c257b16f6f578c07957406,1932
+- cipher-aes128-0.7.0.6

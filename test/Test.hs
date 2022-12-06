@@ -4,9 +4,6 @@
 import Test.Tasty
 import Common
 import Prelude hiding (maximum)
-import CSE230.Types 
-import CSE230.Parse (parseFile)
-import CSE230.Eval
 import qualified Data.Map as M 
 
 main :: IO ()
