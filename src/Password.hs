@@ -20,9 +20,9 @@ import Control.Applicative (Alternative(empty))
 import Data.List.NonEmpty (some1)
 import Control.Monad.Identity (Identity (Identity, Identity))
 import Data.IntMap (findWithDefault)
-import Data.ByteString (ByteString)
+import Data.ByteString (ByteString, putStrLn)
 import Data.Tuple.Select
-import Data.Password.Argon2
+import System.IO.Strict as IS
 import System.Directory
 
 
@@ -128,7 +128,10 @@ passWordGeneration = do
 storeLocal :: String -> String -> IO [(String, String, PassWord)]
 storeLocal web user = do
     pass <- passWordGeneration
-    contents <- readFile "src/file.txt"
+    check <- doesFileExist "src/file.txt"
+    when (not check) $
+        writeFile "src/file.txt" ""
+    contents <- IS.readFile "src/file.txt"
     k <- getStdRandom (randomR(1, 500)) :: IO Int   
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
@@ -164,7 +167,7 @@ storeLocal web user = do
 changePassWord :: String -> String -> IO [(String, String, PassWord)]
 changePassWord web user = do
     pass <- passWordGeneration
-    contents <- readFile "src/file.txt"
+    contents <- P.readFile "src/file.txt"
     k <- getStdRandom (randomR(1, 500)) :: IO Int   
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
@@ -181,7 +184,7 @@ changePassWord web user = do
 -- delete a user's password for a website
 deletePassWord :: String -> String -> IO [(String, String, PassWord)]
 deletePassWord web user = do
-    contents <- readFile "src/file.txt"
+    contents <- P.readFile "src/file.txt"
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
@@ -197,13 +200,13 @@ deletePassWord web user = do
 
 loadFile :: IO [Char]
 loadFile = do
-    contents <- readFile "src/file.txt"
+    contents <- P.readFile "src/file.txt"
     return contents
 
 -- search over the json file to find the matched password for a website / user
 searchPassWord :: String -> IO [(String, String, PassWord)]
 searchPassWord search = do
-    contents <- readFile "src/file.txt" 
+    contents <- P.readFile "src/file.txt" 
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
@@ -289,7 +292,7 @@ decryptPassWord (x:xs) = [PassWordInfo {website= website x, userName=userName x,
 
  
 try = do 
-    contents <- readFile "src/file.txt"
+    contents <- P.readFile "src/file.txt"
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
