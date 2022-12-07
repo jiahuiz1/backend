@@ -65,5 +65,5 @@ test-suite test
                     tasty-hunit,
                     tasty-quickcheck,
                     process,
-                    cse230-while
+                    cse230-project
   other-modules:    Common 

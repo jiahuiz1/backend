@@ -46,6 +46,16 @@ scoreTest' sc (f, x, expR, points, name) =
       then updateCurrent sc points
       else assertFailure "Wrong Result"
 
+testForPassGen :: (Show b, Eq b) => Score -> (m PassWord, Int, String) -> TestTree
+testForPassGen sc (p,points,name) = do
+    testCase name $ do
+      updateTotal sc points
+      pass <- p
+      if length pass >= 8 && length pass <= 16
+        then updateCurrent sc points
+        else assertFailure "Wrong Result"
+  
+
 updateTotal :: Score -> Int -> IO ()
 updateTotal sc n = modifyIORef sc (\(x, y) -> (x, y + n))
 
