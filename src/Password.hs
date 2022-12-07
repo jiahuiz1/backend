@@ -21,6 +21,10 @@ import Data.List.NonEmpty (some1)
 import Control.Monad.Identity (Identity (Identity, Identity))
 import Data.IntMap (findWithDefault)
 import Data.ByteString (ByteString)
+import Data.Tuple.Select
+import Data.Password.Argon2
+import System.Directory
+
 
 -- stack install random/aeson to install the package
 -- add the dependency random/aeson in the .cabal file, build-depends under Library
@@ -29,7 +33,6 @@ import Data.ByteString (ByteString)
 
 
 type PassWord = [Char]
-
 
 
 -- data type for storing all associated password information
@@ -90,57 +93,7 @@ numReplace (a:as) xs = do
                         cur <- replaceWithNum a xs
                         result <- numReplace as cur
                         return result
- 
--- Password Generation
--- Password length is between 8 and 12, first element is a random capitalized letter
--- Rest part is a combination of random characters and integers
 
--- passWordGen ::(MonadIO m) => StateGenM g -> m Info
--- passWordGen g  = do
---                 -- putStrLn "What is the webiste address?"
---                 -- web <- getLine
---                 -- putStrLn "What is your user name?"
---                 -- user <- getLine
---                 first <- getStdRandom (randomR ('A', 'Z'))
---                 len <- getStdRandom (randomR (8, 16))
---                 -- let try = getStdRandom (randomR (8, 16))  :: IO Int
---                 rest <- replicateM len (getStdRandom (randomR ('a', 'z')))
---                 let passwords = [first] ++ rest
---                 indices <- fourIndices 4 len []
---                 result <- indexReplace (indices) (passwords)  
---                 let info = ("Jesse", ("Google", result))
---                 return info
-
-
--- storePassWord :: Info -> State PassWordMap ()
--- storePassWord info = do
---                   map <- get
---                   put (M.insert (fst info) (snd info) map)
-          
--- execPassWord :: Info -> PassWordMap -> PassWordMap
--- execPassWord info  = execState (storePassWord info) 
-
-
-
--- printMap :: IO ()
--- printMap  = do
---     e <- passWordGen pureGen
---     putStrLn (show e)
-
--- b = execPassWord test9 store
-
--- c = let temp = execPassWord test9 store
---     in execPassWord test10 temp
-
-indices = [1,2,3,4,5] :: [Int]
-
-
-test0 = do 
-           let s1 = mkStdGen 42
-           let (first, s2) = randomR ('A', 'Z') s1
-           let (len, s3) = randomR (8, 16::Int) s2
-          --  let rest = replicateM len (randomR ('a', 'z') s3)
-           [first] 
 
 listofChars :: Int -> [Char] -> StdGen -> [Char]
 listofChars 0 xs g = xs
@@ -156,7 +109,7 @@ listofChars n xs g = do
 passWordGeneration :: (MonadIO m) => m PassWord
 passWordGeneration = do 
         first <- getStdRandom (randomR ('A', 'Z'))
-        len <- getStdRandom (randomR (8, 16))
+        len <- getStdRandom (randomR (8, 15))
         rest <- replicateM len (getStdRandom (randomR ('a', 'z')))
         let password = [first] ++ rest
         indices <- randomIndices 4 len []
@@ -168,33 +121,34 @@ passWordGeneration = do
 -- Convert the random password into Json format
 -- Then write password to a file, use that file as our global search store
 -- If a user already has a password on a website, generate a new password for the user
-storeLocal :: String -> String -> IO ()
+storeLocal :: String -> String -> IO [(String, String, PassWord)]
 storeLocal web user = do
     pass <- passWordGeneration
+    check <- doesFileExist "src/file.txt"
     contents <- readFile "src/file.txt"
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
     let res = extractInfo maybe
-    
+    let replaced = replacePassWord web user pass res
+    when (P.length contents >= 0) $
+        writeFile "src/file.txt" (listToString replaced)
+    return (convertToTuple replaced)   
+        
+                  
     -- let exist = searchOverList web user res
     -- if length exist > 0 
     --     then let replaced = replacePassWord web user pass res in
     --          writeToFile (listToString replaced)
     --     else let json = PassWordInfo {website = web, userName = user, password = pass} in
     --          appendFile "src/CSE230/file.txt" ((B.unpackChars (encode json)) ++ "\n")
+    --let passencry = mkPassword (T.pack pass)
 
-    let replaced = replacePassWord web user pass res
-    when (P.length contents >= 0) $
-        writeFile "src/file.txt" (listToString replaced)
 
-test1 = do
-        contents <- readFile "file.txt"
-        writeFile "file.txt" "1"
 
 -- same as above
 -- change the user's password for a specific website
-changePassWord :: String -> String -> IO ()
+changePassWord :: String -> String -> IO [(String, String, PassWord)]
 changePassWord web user = do
     pass <- passWordGeneration
     contents <- readFile "src/file.txt"
@@ -203,39 +157,37 @@ changePassWord web user = do
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
     let res = extractInfo maybe
 
+    --let passencry = mkPassword (T.pack pass)
     let replaced = replacePassWord web user pass res
 
     when (P.length contents >= 0) $
         writeFile "src/file.txt" (listToString replaced)
+    return (convertToTuple replaced)
 
 -- delete a user's password for a website
-deletePassWord :: String -> String -> IO ()
+deletePassWord :: String -> String -> IO [(String, String, PassWord)]
 deletePassWord web user = do
     contents <- readFile "src/file.txt"
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
     let res = extractInfo maybe
-
+    
     let deleted = deleteHelper web user res
 
     when (P.length contents >= 0) $
         writeFile "src/file.txt" (listToString deleted)
+    return (convertToTuple deleted)
 
-
--- for testing
-teststore0 = storeLocal "Google" "Jesse"
-teststore1 = storeLocal "Amazon" "Jack"
-teststore2 = storeLocal "Twitch" "Michal"
-teststore3 = storeLocal "Youtube" "Julian"
-teststore4 = storeLocal "Amazon" "Jesscia"
-teststore5 = storeLocal "Youtube" "Julian"
-teststore6 = storeLocal "Youtube" "Jeffery"
+loadFile :: IO [Char]
+loadFile = do
+    contents <- readFile "src/file.txt"
+    return contents
 
 -- search over the json file to find the matched password for a website / user
 searchPassWord :: String -> IO [(String, String, PassWord)]
 searchPassWord search = do
-    contents <- readFile "src/file.txt"
+    contents <- readFile "src/file.txt" 
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
@@ -253,8 +205,8 @@ extractInfo (x:xs) = case x of
 -- search helper function
 searchHelper ::  String -> [PassWordInfo] -> [(String, String, PassWord)]
 searchHelper _      []     = []
-searchHelper search (x:xs) = if search == (website x)
-                                then (website x, userName x, password x) : searchHelper search xs
+searchHelper search (x:xs) = if (T.isInfixOf (T.pack search) (T.pack (website x)))
+                                then (website x, userName x, password x): searchHelper search xs
                                 else if (T.isInfixOf (T.pack search) (T.pack (userName x)))
                                     then (website x, userName x, password x) : searchHelper search xs
                                     else searchHelper search xs
@@ -281,7 +233,10 @@ deleteHelper web user (x:xs) = if (website x) == web && (userName x) == user
                                     then xs
                                     else [x] ++ deleteHelper web user xs
 
-
+convertToTuple :: [PassWordInfo] -> [(String, String, PassWord)]
+convertToTuple []     = []
+convertToTuple (x:xs) = (website x, userName x, password x) : convertToTuple xs
+ 
 try = do 
     contents <- readFile "src/file.txt"
     let list = S.splitOn ",\n" contents
@@ -306,11 +261,24 @@ len = do
      l <- passWordGeneration :: IO [Char]
      return (length l)
 
--- prop_generate_len 0 = 0
--- prop_generate_len n = do pass <- passWordGeneration
---                          return (length pass)
+ind = ("Google","Jesse","ObxtkmflcGwBIPeo")
+ind1 = sel1 (ind)
+ind2 = sel2 (ind)
+ind3 = sel3 (ind)
 
-ind = [1,23,4,5,6]
-i1 = ind !! 4
 
-             
+l1 = length ("Nd3ggbDMhc,zyx2hu" :: [Char])
+
+-- for testing
+teststore0 = storeLocal "Google" "Jesse"
+teststore1 = storeLocal "Amazon" "Jack"
+teststore2 = storeLocal "Twitch" "Michal"
+teststore3 = storeLocal "Youtube" "Julian"
+teststore4 = storeLocal "Amazon" "Jesscia"
+teststore5 = storeLocal "Youtube" "Julian"
+teststore6 = storeLocal "Youtube" "Jeffery"
+          
+
+passencry = mkPassword (T.pack "Nd3ggbDMhc,zyx2hu")
+
+showpass = unsafeShowPassword passencry
