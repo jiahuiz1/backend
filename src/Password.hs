@@ -11,7 +11,7 @@ import Control.Monad (replicateM)
 import Data.String
 import Prelude as P
 import Foreign.C (CSChar(CSChar))
-import Data.Char (digitToInt)
+import Data.Char
 import Data.List.Split as S
 import Text.Read (Lexeme(Char))
 import qualified Data.Map as M
@@ -35,25 +35,29 @@ import System.Directory
 type PassWord = [Char]
 
 
+
 -- data type for storing all associated password information
 data PassWordInfo = PassWordInfo {
     website :: String,
     userName :: String,
-    password :: PassWord
-} deriving Show
+    password :: PassWord,
+    key :: Int
+} deriving (Show)
 
 instance FromJSON PassWordInfo where
     parseJSON (Object v) =
         PassWordInfo <$> v .: "website"
                      <*> v .: "userName"
                      <*> v .: "password"
+                     <*> v .: "key"
     parseJSON _ = mzero
 
 instance ToJSON PassWordInfo where
-    toJSON (PassWordInfo website user password) =
+    toJSON (PassWordInfo website user password key) =
         object ["website" .= website
-               ,"userName"    .= user
-               ,"password".= password       
+               ,"userName".= user
+               ,"password".= password
+               ,"key"     .= key       
         ]
 
 
@@ -115,7 +119,7 @@ passWordGeneration = do
         indices <- randomIndices 4 len []
         result <- indexReplace indices password
         numIndices <- randomIndices 2 len []
-        final <- numReplace numIndices result
+        final <- numReplace numIndices result      
         return final
 
 -- Convert the random password into Json format
@@ -124,26 +128,35 @@ passWordGeneration = do
 storeLocal :: String -> String -> IO [(String, String, PassWord)]
 storeLocal web user = do
     pass <- passWordGeneration
-    check <- doesFileExist "src/file.txt"
     contents <- readFile "src/file.txt"
+    k <- getStdRandom (randomR(1, 500)) :: IO Int   
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
     let res = extractInfo maybe
-    let replaced = replacePassWord web user pass res
+    let passencry = encryptHelper k pass
+    let replaced = replacePassWord web user k passencry res
     when (P.length contents >= 0) $
         writeFile "src/file.txt" (listToString replaced)
-    return (convertToTuple replaced)   
-        
-                  
-    -- let exist = searchOverList web user res
-    -- if length exist > 0 
-    --     then let replaced = replacePassWord web user pass res in
-    --          writeToFile (listToString replaced)
-    --     else let json = PassWordInfo {website = web, userName = user, password = pass} in
-    --          appendFile "src/CSE230/file.txt" ((B.unpackChars (encode json)) ++ "\n")
-    --let passencry = mkPassword (T.pack pass)
 
+    let decry = decryptPassWord replaced
+    return (convertToTuple decry) 
+        
+
+
+-- storeLocalEncrypt :: String -> String -> IO [(String, String, PassWord)]
+-- storeLocalEncrypt web user = do
+--     pass <- passWordGeneration
+--     contents <- readFile "src/file.txt"
+--     let list = S.splitOn ",\n" contents
+--     let temp = map B.packChars list
+--     let maybe = map (decode) temp :: [Maybe PassWordInfo]
+--     let res = extractInfo maybe
+--     --let passencry = mkPassword (T.pack pass)
+--     let replaced = replacePassWord web user pass res
+--     when (P.length contents >= 0) $
+--         writeFile "src/file.txt" (listToString replaced)
+--     return (convertToTuple replaced)   
 
 
 -- same as above
@@ -152,17 +165,18 @@ changePassWord :: String -> String -> IO [(String, String, PassWord)]
 changePassWord web user = do
     pass <- passWordGeneration
     contents <- readFile "src/file.txt"
+    k <- getStdRandom (randomR(1, 500)) :: IO Int   
     let list = S.splitOn ",\n" contents
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
     let res = extractInfo maybe
-
-    --let passencry = mkPassword (T.pack pass)
-    let replaced = replacePassWord web user pass res
-
+    let passencry = encryptHelper k pass
+    let replaced = replacePassWord web user k passencry res
     when (P.length contents >= 0) $
         writeFile "src/file.txt" (listToString replaced)
-    return (convertToTuple replaced)
+
+    let decry = decryptPassWord replaced
+    return (convertToTuple decry) 
 
 -- delete a user's password for a website
 deletePassWord :: String -> String -> IO [(String, String, PassWord)]
@@ -177,7 +191,9 @@ deletePassWord web user = do
 
     when (P.length contents >= 0) $
         writeFile "src/file.txt" (listToString deleted)
-    return (convertToTuple deleted)
+    
+    let final = decryptPassWord deleted
+    return (convertToTuple final)
 
 loadFile :: IO [Char]
 loadFile = do
@@ -192,7 +208,8 @@ searchPassWord search = do
     let temp = map B.packChars list
     let maybe = map (decode) temp :: [Maybe PassWordInfo]
     let res = extractInfo maybe
-    return (searchHelper search res)
+    let final = decryptPassWord res
+    return (searchHelper search final)
 
     
 -- extract PassWordInfo from Maybe
@@ -214,11 +231,14 @@ searchHelper search (x:xs) = if (T.isInfixOf (T.pack search) (T.pack (website x)
 -- try to find a password in the list of PassWordInfo
 -- if succeed, replace it with the new password, and return the list with new password
 -- if failed, replace the original list
-replacePassWord :: String -> String -> PassWord -> [PassWordInfo] -> [PassWordInfo]
-replacePassWord web user newpass []     = [PassWordInfo {website=web, userName = user, password = newpass}]
-replacePassWord web user newpass (x:xs) =  if (website x) == web && (userName x) == user
-                                            then [PassWordInfo {website = web, userName = user, password = newpass}] ++ xs
-                                            else [x] ++ replacePassWord web user newpass xs                                   
+replacePassWord :: String -> String -> Int -> PassWord -> [PassWordInfo] -> [PassWordInfo]
+replacePassWord web user k newpass []     = [PassWordInfo {website=web, userName = user, password = newpass, key = k}]
+replacePassWord web user k newpass (x:xs) =  if (website x) == web && (userName x) == user
+                                                        then [PassWordInfo {website = web, userName = user, password = newpass, key = k}] ++ xs
+                                                        else [x] ++ replacePassWord web user k newpass xs
+
+                                
+
 
 -- helper function to convert list of PassWordInfo to String
 listToString :: [PassWordInfo] -> String
@@ -236,6 +256,37 @@ deleteHelper web user (x:xs) = if (website x) == web && (userName x) == user
 convertToTuple :: [PassWordInfo] -> [(String, String, PassWord)]
 convertToTuple []     = []
 convertToTuple (x:xs) = (website x, userName x, password x) : convertToTuple xs
+
+
+-- caesar encryption for the password
+caesarEncrypt :: Int -> Char -> Int
+caesarEncrypt key char = (((ord char) + key) `mod` 256)
+
+caesarDecrypt :: Int -> Int -> Char
+caesarDecrypt key i = chr ((i - key + 256) `mod` 256)
+
+
+encryptHelper :: Int -> [Char] -> [Char]
+encryptHelper key []     = []
+encryptHelper key (x:xs) = (show (caesarEncrypt key x)) ++ " " ++ encryptHelper key xs
+
+
+decryptHelper :: Int -> [Int] -> [Char]
+decryptHelper _ []     = []
+decryptHelper key (x:xs) = [caesarDecrypt key x] ++ decryptHelper key xs
+
+
+convertToIntList :: [String] -> [Int]
+convertToIntList  []     = []
+convertToIntList (x:xs) = if x == ""
+                            then convertToIntList xs
+                            else (read x :: Int) : convertToIntList xs
+ 
+-- decrypt the password into the PassWordInfo
+decryptPassWord :: [PassWordInfo] -> [PassWordInfo]
+decryptPassWord []     = []
+decryptPassWord (x:xs) = [PassWordInfo {website= website x, userName=userName x, password = decryptHelper (key x) (convertToIntList(S.splitOn " " (password x))), key=key x}] ++ decryptPassWord xs 
+
  
 try = do 
     contents <- readFile "src/file.txt"
@@ -247,27 +298,11 @@ try = do
 
 try1 = [PassWordInfo {website = "Google", userName = "Jesse", password = "OeT0p:tqxIl"},PassWordInfo {website = "Amazon", userName = "Jack", password = "Em@qw?ppwyi"},PassWordInfo {website = "Twitch", userName = "Michal", password = "Bwt z^:ri"},PassWordInfo {website = "Youtube", userName = "Julian", password = "MrarclrR\"Uwz"},PassWordInfo {website = "Youtube", userName = "Julian", password = "Puly n/kljvikp^Rg"},PassWordInfo {website = "Youtube", userName = "Julian", password = "HdcC/laiqynjg7b"},PassWordInfo {website = "Google", userName = "Jesse", password = "Tdn{e/akq6ihn"},PassWordInfo {website = "Google", userName = "Jesse", password = "Kqi}gTswh.#mavxp"},PassWordInfo {website = "Google", userName = "Jesse", password = "ObxtkmflcGwBIPeo"}]
 
-try2 = replacePassWord "Google" "Jesse" "1234324e" try1
+try2 = replacePassWord "Google" "Jesse" 128 "1234324e" try1
 
 tryt :: [(String, String, PassWord)]
 tryt = searchHelper "Jesse" try1
 
-
-keyString = BS.pack "It is a 128-bit key"
-
-substring = T.isInfixOf (T.pack ("Jea")) (T.pack "Jessica")
-
-len = do
-     l <- passWordGeneration :: IO [Char]
-     return (length l)
-
-ind = ("Google","Jesse","ObxtkmflcGwBIPeo")
-ind1 = sel1 (ind)
-ind2 = sel2 (ind)
-ind3 = sel3 (ind)
-
-
-l1 = length ("Nd3ggbDMhc,zyx2hu" :: [Char])
 
 -- for testing
 teststore0 = storeLocal "Google" "Jesse"
@@ -278,7 +313,3 @@ teststore4 = storeLocal "Amazon" "Jesscia"
 teststore5 = storeLocal "Youtube" "Julian"
 teststore6 = storeLocal "Youtube" "Jeffery"
           
-
-passencry = mkPassword (T.pack "Nd3ggbDMhc,zyx2hu")
-
-showpass = unsafeShowPassword passencry
